@@ -107,26 +107,69 @@ async def ws(sock: WebSocket):
 def dashboard():
     return """<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TFM Tabaco - Live</title><style>
+<title>TFM Tabaco</title><style>
 *{box-sizing:border-box;margin:0}body{font-family:system-ui,sans-serif;background:#0c1220;
-color:#eef;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px}
-h1{font-size:20px;color:#7fe0ff;margin:12px}.card{background:#131c30;border-radius:16px;
-padding:28px;width:100%;max-width:380px;margin-top:16px;box-shadow:0 8px 24px #0008}
-.lbl{font-size:32px;font-weight:800;margin:8px 0}.pct{font-size:44px;font-weight:800;color:#00c896}
-.bar{height:14px;background:#26324a;border-radius:8px;overflow:hidden;margin:14px 0}
-.fill{height:100%;background:linear-gradient(90deg,#00c896,#7fe0ff);transition:width .4s}
-.meta{font-size:12px;color:#7a88a0;margin-top:16px}</style></head><body>
-<h1>TFM . Clasificador de Tabaco (nube)</h1>
-<div class="card"><div class="lbl" id="lbl">esperando...</div>
-<div class="bar"><div class="fill" id="fill" style="width:0%"></div></div>
-<div class="pct" id="pct">0%</div>
-<div class="meta" id="meta">sin datos aun</div></div>
-<script>async function up(){try{let r=await fetch('/last');let d=await r.json();
-document.getElementById('lbl').textContent=d.label;
-document.getElementById('pct').textContent=d.conf+'%';
-document.getElementById('fill').style.width=d.conf+'%';
-document.getElementById('meta').textContent='muestras: '+d.n+(d.ts?(' . hace '+Math.round(Date.now()/1000-d.ts)+'s'):'');
-}catch(e){}}setInterval(up,1000);up();</script></body></html>"""
+color:#eef;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:18px}
+h1{font-size:18px;color:#7fe0ff;margin:8px 0 4px;text-align:center}
+.sub{font-size:12px;color:#7a88a0;margin-bottom:14px}
+.stage{width:100%;max-width:420px}
+video,canvas,#preview{width:100%;border-radius:14px;background:#000;aspect-ratio:4/3;object-fit:cover}
+.row{display:flex;gap:10px;margin:12px 0}
+button{flex:1;padding:14px;border:0;border-radius:12px;font-size:15px;font-weight:700;
+background:#00c896;color:#04121a}button.alt{background:#26324a;color:#cfe}
+button:active{transform:scale(.98)}
+.card{background:#131c30;border-radius:16px;padding:20px;margin-top:14px;box-shadow:0 8px 24px #0008}
+.lbl{font-size:30px;font-weight:800}.pct{font-size:38px;font-weight:800;color:#00c896;float:right}
+.bar{height:12px;background:#26324a;border-radius:8px;overflow:hidden;margin:8px 0}
+.fill{height:100%;transition:width .4s}
+.prob{display:flex;justify-content:space-between;font-size:13px;color:#9fb;margin:3px 0}
+.hint{font-size:12px;color:#7a88a0;margin-top:8px;text-align:center}
+label.up{display:block}input[type=file]{display:none}</style></head><body>
+<h1>TFM . Clasificador de Tabaco</h1>
+<div class="sub">Cercospora . Alternaria . Sana &nbsp;|&nbsp; modelo en la nube</div>
+<div class="stage">
+<video id="v" autoplay playsinline></video>
+<canvas id="c" style="display:none"></canvas>
+<div class="row">
+<button id="shot">Capturar y clasificar</button>
+<label class="up" style="flex:1"><button class="alt" type="button" onclick="document.getElementById('f').click()">Subir foto</button>
+<input type="file" id="f" accept="image/*"></label>
+</div>
+<div class="card" id="res" style="display:none">
+<span class="pct" id="pct">0%</span><div class="lbl" id="lbl">-</div>
+<div class="bar"><div class="fill" id="fill" style="width:0%;background:#00c896"></div></div>
+<div id="probs"></div></div>
+<div class="hint" id="hint">Apunta una hoja de tabaco y toca Capturar</div>
+</div>
+<script>
+const COLORS={Alternaria:'#ff8c00',Cercospora:'#ffd200',Sana:'#00dc78'};
+const v=document.getElementById('v'),c=document.getElementById('c');
+navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+ .then(s=>v.srcObject=s).catch(e=>{document.getElementById('hint').textContent='Sin camara: usa Subir foto ('+e+')';});
+async function send(blob){
+ document.getElementById('hint').textContent='Clasificando...';
+ try{let r=await fetch('/predict',{method:'POST',body:blob});let d=await r.json();show(d);}
+ catch(e){document.getElementById('hint').textContent='Error: '+e;}
+}
+function show(d){
+ if(d.error){document.getElementById('hint').textContent='Error: '+d.error;return;}
+ let col=COLORS[d.label]||'#00c896';
+ document.getElementById('res').style.display='block';
+ document.getElementById('lbl').textContent=d.label;
+ document.getElementById('lbl').style.color=col;
+ document.getElementById('pct').textContent=d.conf+'%';
+ let f=document.getElementById('fill');f.style.width=d.conf+'%';f.style.background=col;
+ let h='';for(let k in d.probs){h+='<div class=prob><span>'+k+'</span><span>'+d.probs[k]+'%</span></div>';}
+ document.getElementById('probs').innerHTML=h;
+ document.getElementById('hint').textContent='Listo. Captura otra cuando quieras.';
+}
+document.getElementById('shot').onclick=()=>{
+ c.width=v.videoWidth||640;c.height=v.videoHeight||480;
+ c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+ c.toBlob(b=>send(b),'image/jpeg',0.8);
+};
+document.getElementById('f').onchange=e=>{if(e.target.files[0])send(e.target.files[0]);};
+</script></body></html>"""
 
 
 @app.get("/last")
