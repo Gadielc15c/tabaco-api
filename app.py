@@ -177,13 +177,11 @@ def dashboard():
 color:#eef;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px}
 h1{font-size:18px;color:#7fe0ff;margin:6px 0 2px;text-align:center}
 .sub{font-size:12px;color:#7a88a0;margin-bottom:12px}
-.stage{position:relative;width:100%;max-width:440px;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:#000}
-video,#ov{position:absolute;inset:0;width:100%;height:100%}
-video{object-fit:cover}
-.row{display:flex;gap:10px;margin:12px 0;width:100%;max-width:440px}
-button{flex:1;padding:13px;border:0;border-radius:12px;font-size:14px;font-weight:700;background:#26324a;color:#cfe}
-button.on{background:#00c896;color:#04121a}button:active{transform:scale(.98)}
-.card{width:100%;max-width:440px;background:#131c30;border-radius:16px;padding:16px 20px;box-shadow:0 8px 24px #0008}
+#view{width:100%;max-width:460px;aspect-ratio:4/3;border-radius:14px;background:#000;display:block}
+.row{display:flex;gap:10px;margin:12px 0;width:100%;max-width:460px}
+button{flex:1;padding:14px;border:0;border-radius:12px;font-size:14px;font-weight:700;background:#00c896;color:#04121a}
+button.alt{background:#26324a;color:#cfe}button:active{transform:scale(.98)}
+.card{width:100%;max-width:460px;background:#131c30;border-radius:16px;padding:16px 20px;box-shadow:0 8px 24px #0008}
 .lbl{font-size:26px;font-weight:800}.pct{font-size:32px;font-weight:800;float:right}
 .bar{height:10px;background:#26324a;border-radius:8px;overflow:hidden;margin:8px 0}
 .fill{height:100%;transition:width .3s}
@@ -192,45 +190,48 @@ button.on{background:#00c896;color:#04121a}button:active{transform:scale(.98)}
 input[type=file]{display:none}</style></head><body>
 <h1>TFM . Detector de Tabaco</h1>
 <div class="sub">Enfermedad + localizacion (cajas) &nbsp;|&nbsp; modelo en la nube</div>
-<div class="stage"><video id="v" autoplay playsinline muted></video><canvas id="ov"></canvas></div>
+<canvas id="view"></canvas>
 <div class="row">
-<button id="live" class="on">Detener</button>
-<button onclick="document.getElementById('f').click()">Subir foto</button>
+<button onclick="document.getElementById('f').click()">Subir foto de hoja</button>
+<button id="cambtn" class="alt" type="button">Camara</button>
 <input type="file" id="f" accept="image/*">
 </div>
-<div class="card"><span class="pct" id="pct">--</span><div class="lbl" id="lbl">iniciando...</div>
+<div class="card"><span class="pct" id="pct">--</span><div class="lbl" id="lbl">Sube una foto de hoja</div>
 <div class="bar"><div class="fill" id="fill" style="width:0%;background:#00c896"></div></div>
-<div id="probs"></div><div class="hint" id="hint">Apunta una hoja de tabaco</div></div>
+<div id="probs"></div><div class="hint" id="hint">Sube una foto o abre la camara</div></div>
+<video id="v" autoplay playsinline muted style="display:none"></video>
 <canvas id="cap" style="display:none"></canvas>
 <script>
 const COLORS={Alternaria:'#ff8c00',Cercospora:'#ffd200',Sana:'#00dc78'};
-const v=document.getElementById('v'),ov=document.getElementById('ov'),cap=document.getElementById('cap');
-let live=true,busy=false,lastBoxes=[],lastCol='#00c896';
-navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
- .then(s=>{v.srcObject=s;requestAnimationFrame(draw);loop();})
- .catch(e=>{document.getElementById('hint').textContent='Sin camara: usa Subir foto';});
-function draw(){
- ov.width=ov.clientWidth;ov.height=ov.clientHeight;
- const g=ov.getContext('2d');g.clearRect(0,0,ov.width,ov.height);
- g.lineWidth=3;g.strokeStyle=lastCol;g.font='bold 14px system-ui';g.fillStyle=lastCol;
- for(const b of lastBoxes){
-  const x=b[0]*ov.width,y=b[1]*ov.height,w=b[2]*ov.width,h=b[3]*ov.height;
-  g.strokeRect(x,y,w,h);g.fillText('lesion',x+2,y>14?y-4:y+14);
+const view=document.getElementById('view'),g=view.getContext('2d');
+const v=document.getElementById('v'),cap=document.getElementById('cap');
+let boxes=[],col='#00c896',live=false,busy=false,srcImg=null;
+
+function fit(){view.width=460;view.height=345;}
+fit();
+function render(source){
+ // draw source stretched to canvas; boxes are normalized to full image so they align
+ g.fillStyle='#000';g.fillRect(0,0,view.width,view.height);
+ if(source) g.drawImage(source,0,0,view.width,view.height);
+ g.lineWidth=3;g.strokeStyle=col;g.font='bold 15px system-ui';g.fillStyle=col;
+ for(const b of boxes){
+  const x=b[0]*view.width,y=b[1]*view.height,w=b[2]*view.width,h=b[3]*view.height;
+  g.strokeRect(x,y,w,h);
+  g.fillStyle=col;g.fillRect(x,Math.max(0,y-16),54,16);
+  g.fillStyle='#000';g.fillText('lesion',x+3,Math.max(12,y-4));g.fillStyle=col;
  }
- requestAnimationFrame(draw);
 }
-function toBlob(){cap.width=v.videoWidth||640;cap.height=v.videoHeight||480;
- cap.getContext('2d').drawImage(v,0,0,cap.width,cap.height);
- return new Promise(r=>cap.toBlob(r,'image/jpeg',0.75));}
+function toBlob(source,w,h){cap.width=w;cap.height=h;cap.getContext('2d').drawImage(source,0,0,w,h);
+ return new Promise(r=>cap.toBlob(r,'image/jpeg',0.85));}
 async function classify(blob){
- busy=true;
+ busy=true;document.getElementById('hint').textContent='Clasificando...';
  try{let r=await fetch('/predict',{method:'POST',body:blob});let d=await r.json();show(d);}
- catch(e){document.getElementById('hint').textContent='Error red';}
+ catch(e){document.getElementById('hint').textContent='Error de red';}
  busy=false;
 }
 function show(d){
  if(d.error){document.getElementById('hint').textContent=d.error;return;}
- let col=COLORS[d.label]||'#00c896';lastCol=col;lastBoxes=d.boxes||[];
+ col=COLORS[d.label]||'#00c896';boxes=d.boxes||[];
  document.getElementById('lbl').textContent=d.label;
  document.getElementById('lbl').style.color=col;
  document.getElementById('pct').textContent=d.conf+'%';
@@ -238,12 +239,28 @@ function show(d){
  let f=document.getElementById('fill');f.style.width=d.conf+'%';f.style.background=col;
  let h='';for(let k in d.probs){h+='<div class=prob><span>'+k+'</span><span>'+d.probs[k]+'%</span></div>';}
  document.getElementById('probs').innerHTML=h;
- document.getElementById('hint').textContent=lastBoxes.length+' lesion(es) detectada(s)';
+ document.getElementById('hint').textContent=(boxes.length?boxes.length+' lesion(es)':'sin lesiones')+' . toca otra foto o camara';
+ render(srcImg||v);
 }
-async function loop(){while(true){if(live&&!busy&&v.videoWidth){await classify(await toBlob());}
- await new Promise(r=>setTimeout(r,1200));}}
-document.getElementById('live').onclick=e=>{live=!live;e.target.textContent=live?'Detener':'Reanudar';e.target.className=live?'on':'';};
-document.getElementById('f').onchange=e=>{if(e.target.files[0]){live=false;document.getElementById('live').textContent='Reanudar';document.getElementById('live').className='';classify(e.target.files[0]);}};
+// UPLOAD: show the image AND boxes
+document.getElementById('f').onchange=e=>{
+ const file=e.target.files[0];if(!file)return;
+ live=false;document.getElementById('cambtn').textContent='Camara';
+ const img=new Image();
+ img.onload=async()=>{srcImg=img;boxes=[];render(img);
+  classify(await toBlob(img,img.naturalWidth,img.naturalHeight));};
+ img.src=URL.createObjectURL(file);
+};
+// CAMERA: live loop drawing frames + boxes
+document.getElementById('cambtn').onclick=async e=>{
+ if(!live){
+  try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});v.srcObject=s;}
+  catch(err){document.getElementById('hint').textContent='Sin camara, usa Subir foto';return;}
+  live=true;srcImg=null;e.target.textContent='Detener camara';loop();
+ } else {live=false;e.target.textContent='Camara';}
+};
+async function loop(){while(live){if(v.videoWidth){render(v);if(!busy)await classify(await toBlob(v,v.videoWidth,v.videoHeight));}
+ await new Promise(r=>setTimeout(r,1000));}}
 </script></body></html>"""
 
 
