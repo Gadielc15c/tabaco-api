@@ -21,10 +21,12 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from PIL import Image
 from torchvision import models, transforms
 
-CLASSES = ["alternaria_alternata", "cercospora_nicotianae", "healthy"]
+CLASSES = ["alternaria_alternata", "cercospora_nicotianae", "healthy", "no_hoja"]
 LABELS_ES = {"alternaria_alternata": "Alternaria",
              "cercospora_nicotianae": "Cercospora",
-             "healthy": "Sana"}
+             "healthy": "Sana",
+             "no_hoja": "No es hoja"}
+NO_BOX = {"healthy", "no_hoja"}   # clases sin lesiones que localizar
 CKPT = "model_best.pt"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -125,7 +127,7 @@ def infer(img_bytes: bytes) -> dict:
     probs = probs.tolist()
     key = CLASSES[idx]
     # only box disease classes (Sana = no lesion)
-    boxes = [] if key == "healthy" else _boxes_from_cam(cam)
+    boxes = [] if key in NO_BOX else _boxes_from_cam(cam)
     res = {
         "label": LABELS_ES.get(key, key),
         "key": key,
